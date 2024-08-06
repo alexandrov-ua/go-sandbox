@@ -1,0 +1,94 @@
+definitions:
+  main.AuthorCreateModel:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+    type: object
+  main.AuthorModel:
+    properties:
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /authors:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            items:
+              $ref: '#/definitions/main.AuthorModel'
+            type: array
+      summary: Get a list of authors
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: AuthorCreateModel
+        in: body
+        name: aut
+        required: true
+        schema:
+          $ref: '#/definitions/main.AuthorCreateModel'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: ok
+          schema:
+            $ref: '#/definitions/main.AuthorModel'
+        "422":
+          description: error
+          schema: {}
+        "500":
+          description: internalError
+          schema: {}
+      summary: Create authtor
+  /authors/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+        "404":
+          description: ok
+      summary: Delete author by Id
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: Id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ok
+          schema:
+            $ref: '#/definitions/main.AuthorModel'
+      summary: Get authors by Id
+swagger: "2.0"
