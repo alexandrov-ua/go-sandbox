@@ -4,6 +4,7 @@ import (
 	"authorsdb-rest/db"
 	"context"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -32,15 +33,15 @@ var pool *pgxpool.Pool
 
 func main() {
 	ctx := context.Background()
-	tp, err := pgxpool.New(ctx, "postgres://postgres:Qweasdzxc123@localhost:5432/my-db?sslmode=disable")
+	tp, err := pgxpool.New(ctx, os.Getenv("API_CONNECTION_STRING"))
 	if err != nil {
 		panic(err)
 	}
 	pool = tp
 
 	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
-	//r := gin.Default()
+
+	r := gin.Default()
 	docs.SwaggerInfo.BasePath = "/api/v1"
 
 	v1 := r.Group("/api/v1")
@@ -52,7 +53,7 @@ func main() {
 	}
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
-	http.ListenAndServe(":8080", r)
+	http.ListenAndServe(os.Getenv("API_URL"), r)
 }
 
 type AuthorModel struct {
@@ -152,7 +153,7 @@ func CreateAuthor(c *gin.Context) {
 			}
 			defer conn.Release()
 		} else {
-			c.AbortWithError(http.StatusUnprocessableEntity, err)
+			c.AbortWithError(http.StatusInternalServerError, err)
 		}
 	} else {
 		c.AbortWithError(http.StatusUnprocessableEntity, er)

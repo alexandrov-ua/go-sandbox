@@ -1,0 +1,24 @@
+services:
+  api:
+    image: api-gin-sqlc
+    environment:
+     - API_URL=:8080
+     - API_CONNECTION_STRING=postgres://postgres:Qweasdzxc123@postgres:5432/my-db?sslmode=disable
+    build:
+      context: .
+    ports:
+      - 8080:8080
+    depends_on:
+    - postgres
+
+  postgres:
+    image: postgres:16-alpine3.20
+    restart: always
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_PASSWORD=Qweasdzxc123
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=my-db
+    volumes:
+      - ./migrations/20240728213003_init.up.sql:/docker-entrypoint-initdb.d/init.sql
