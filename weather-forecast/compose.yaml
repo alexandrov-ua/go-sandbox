@@ -1,0 +1,18 @@
+services:
+  api:
+    image: api-redis-test
+    environment:
+     - API_URL=:8080
+     - REDIS_CONNECTION_STRING=redis://redis:6379/0
+    build:
+      context: .
+    ports:
+      - 8080:8080
+    depends_on:
+    - redis
+
+  redis:
+    image: redis:7.4
+    restart: always
+    ports:
+      - 6379:6379

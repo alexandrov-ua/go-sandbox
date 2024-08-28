@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -64,6 +66,32 @@ type WeatherModel struct {
 	WindSpeedUnits    string
 }
 
+func getCachedWeather(lat float32, long float32) (*WeatherDto, error) {
+	cacheKey := fmt.Sprintf("weather:%v:%v", lat, long)
+	if val, err := redisClient.Get(context.Background(), cacheKey).Result(); err != nil {
+		tmp, err := getWeather(lat, long)
+		if err != nil {
+			return nil, err
+		}
+		tmpBytes, err := json.Marshal(tmp)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+		_, err = redisClient.Set(context.Background(), cacheKey, string(tmpBytes), time.Duration(30)*time.Second).Result()
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+
+		return tmp, nil
+	} else {
+		tmp := &WeatherDto{}
+		if err := json.Unmarshal([]byte(val), tmp); err != nil {
+			return nil, err
+		}
+		return tmp, nil
+	}
+}
+
 func HandleGetWeather(c *gin.Context) {
 	lat, err1 := strconv.ParseFloat(c.Query("lat"), 32)
 	long, err2 := strconv.ParseFloat(c.Query("long"), 32)
@@ -72,12 +100,9 @@ func HandleGetWeather(c *gin.Context) {
 		return
 	}
 
-	if dto, err := getWeather(float32(lat), float32(long)); err == nil {
-
+	if dto, err := getCachedWeather(float32(lat), float32(long)); err == nil {
 		c.JSON(http.StatusOK, WeatherModel{dto.Current.Temperature2M, dto.CurrentUnits.Temperature2M, dto.Current.WindSpeed10M, dto.CurrentUnits.WindSpeed10M})
-		return
 	} else {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
 	}
-
 }
