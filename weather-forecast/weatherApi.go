@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,12 +11,23 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 const baseUrl = "https://api.open-meteo.com"
 
-func getWeather(lat float32, long float32) (*WeatherDto, error) {
-	resp, err := http.Get(fmt.Sprintf("%v/v1/forecast?latitude=%v&longitude=%v&current=temperature_2m,wind_speed_10m", baseUrl, lat, long))
+func getWeather(ctx context.Context, lat float32, long float32) (*WeatherDto, error) {
+
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%v/v1/forecast?latitude=%v&longitude=%v&current=temperature_2m,wind_speed_10m", baseUrl, lat, long), bytes.NewReader([]byte{}))
+	if err != nil {
+		return nil, err
+	}
+
+	client := http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -66,10 +78,10 @@ type WeatherModel struct {
 	WindSpeedUnits    string
 }
 
-func getCachedWeather(lat float32, long float32) (*WeatherDto, error) {
+func getCachedWeather(ctx context.Context, lat float32, long float32) (*WeatherDto, error) {
 	cacheKey := fmt.Sprintf("weather:%v:%v", lat, long)
-	if val, err := redisClient.Get(context.Background(), cacheKey).Result(); err != nil {
-		tmp, err := getWeather(lat, long)
+	if val, err := redisClient.Get(ctx, cacheKey).Result(); err != nil {
+		tmp, err := getWeather(ctx, lat, long)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +89,7 @@ func getCachedWeather(lat float32, long float32) (*WeatherDto, error) {
 		if err != nil {
 			fmt.Println(err.Error())
 		}
-		_, err = redisClient.Set(context.Background(), cacheKey, string(tmpBytes), time.Duration(30)*time.Second).Result()
+		_, err = redisClient.Set(ctx, cacheKey, string(tmpBytes), time.Duration(30)*time.Second).Result()
 		if err != nil {
 			fmt.Println(err.Error())
 		}
@@ -100,7 +112,7 @@ func HandleGetWeather(c *gin.Context) {
 		return
 	}
 
-	if dto, err := getCachedWeather(float32(lat), float32(long)); err == nil {
+	if dto, err := getCachedWeather(c.Request.Context(), float32(lat), float32(long)); err == nil {
 		c.JSON(http.StatusOK, WeatherModel{dto.Current.Temperature2M, dto.CurrentUnits.Temperature2M, dto.Current.WindSpeed10M, dto.CurrentUnits.WindSpeed10M})
 	} else {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())

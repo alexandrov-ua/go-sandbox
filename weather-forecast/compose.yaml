@@ -4,15 +4,27 @@ services:
     environment:
      - API_URL=:8080
      - REDIS_CONNECTION_STRING=redis://redis:6379/0
+     - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
     build:
       context: .
     ports:
       - 8080:8080
     depends_on:
     - redis
+    - jaeger
 
   redis:
     image: redis:7.4
     restart: always
     ports:
       - 6379:6379
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    restart: always
+    environment:
+     - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    ports:
+      - 16686:16686
+      - 4318:4318
+      - 4317:4317
