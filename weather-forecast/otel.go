@@ -21,14 +21,7 @@ var (
 )
 
 func initTracer() func(context.Context) error {
-
-	// secureOption := otlptracegrpc.wi //.WithTLSCredentials(credentials.NewClientTLSFromCert(nil, ""))
-	// if len(insecure) > 0 {
-	// 	secureOption = otlptracegrpc.WithInsecure()
-	// }
-	// certPool, err := x509.SystemCertPool()
-	// creds := credentials.NewClientTLSFromCert(certPool, "")
-	secureOption := otlptracegrpc.WithInsecure() //.WithTLSCredentials(creds)
+	secureOption := otlptracegrpc.WithInsecure()
 
 	exporter, err := otlptrace.New(
 		context.Background(),
@@ -49,7 +42,7 @@ func initTracer() func(context.Context) error {
 		),
 	)
 	if err != nil {
-		log.Printf("Could not set resources: ", err)
+		log.Println("Could not set resources: ", err)
 	}
 
 	otel.SetTracerProvider(

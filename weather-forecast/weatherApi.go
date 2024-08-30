@@ -2,32 +2,77 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/net/context"
 )
+
+type WeatherController struct {
+	redisClient *redis.Client
+	httpClient  *http.Client
+	logger      *slog.Logger
+	context     context.Context
+}
+
+func (controller *WeatherController) HandleGetWeather(ctx *gin.Context) {
+	lat, err1 := strconv.ParseFloat(ctx.Query("lat"), 32)
+	long, err2 := strconv.ParseFloat(ctx.Query("long"), 32)
+	if err1 != nil || err2 != nil {
+		ctx.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if dto, err := controller.getCachedWeather(float32(lat), float32(long)); err == nil {
+		ctx.JSON(http.StatusOK, WeatherModel{dto.Current.Temperature2M, dto.CurrentUnits.Temperature2M, dto.Current.WindSpeed10M, dto.CurrentUnits.WindSpeed10M})
+	} else {
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
+	}
+}
+
+func (controller *WeatherController) getCachedWeather(lat float32, long float32) (*WeatherDto, error) {
+	cacheKey := fmt.Sprintf("weather:%v:%v", lat, long)
+	if val, err := controller.redisClient.Get(controller.context, cacheKey).Result(); err != nil {
+		tmp, err := controller.getWeather(lat, long)
+		if err != nil {
+			return nil, err
+		}
+		tmpBytes, err := json.Marshal(tmp)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+		_, err = controller.redisClient.Set(controller.context, cacheKey, string(tmpBytes), time.Duration(30)*time.Second).Result()
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+
+		return tmp, nil
+	} else {
+		tmp := &WeatherDto{}
+		if err := json.Unmarshal([]byte(val), tmp); err != nil {
+			return nil, err
+		}
+		return tmp, nil
+	}
+}
 
 const baseUrl = "https://api.open-meteo.com"
 
-func getWeather(ctx context.Context, lat float32, long float32) (*WeatherDto, error) {
+func (controller *WeatherController) getWeather(lat float32, long float32) (*WeatherDto, error) {
 
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%v/v1/forecast?latitude=%v&longitude=%v&current=temperature_2m,wind_speed_10m", baseUrl, lat, long), bytes.NewReader([]byte{}))
+	req, err := http.NewRequestWithContext(controller.context, "GET", fmt.Sprintf("%v/v1/forecast?latitude=%v&longitude=%v&current=temperature_2m,wind_speed_10m", baseUrl, lat, long), bytes.NewReader([]byte{}))
 	if err != nil {
 		return nil, err
 	}
-
-	client := http.Client{
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-	}
-
-	resp, err := client.Do(req)
+	controller.logger.Info("Making request to 3rd party API")
+	resp, err := controller.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -76,45 +121,4 @@ type WeatherModel struct {
 	TemperatureUnists string
 	WindSpeed         float32
 	WindSpeedUnits    string
-}
-
-func getCachedWeather(ctx context.Context, lat float32, long float32) (*WeatherDto, error) {
-	cacheKey := fmt.Sprintf("weather:%v:%v", lat, long)
-	if val, err := redisClient.Get(ctx, cacheKey).Result(); err != nil {
-		tmp, err := getWeather(ctx, lat, long)
-		if err != nil {
-			return nil, err
-		}
-		tmpBytes, err := json.Marshal(tmp)
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		_, err = redisClient.Set(ctx, cacheKey, string(tmpBytes), time.Duration(30)*time.Second).Result()
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-
-		return tmp, nil
-	} else {
-		tmp := &WeatherDto{}
-		if err := json.Unmarshal([]byte(val), tmp); err != nil {
-			return nil, err
-		}
-		return tmp, nil
-	}
-}
-
-func HandleGetWeather(c *gin.Context) {
-	lat, err1 := strconv.ParseFloat(c.Query("lat"), 32)
-	long, err2 := strconv.ParseFloat(c.Query("long"), 32)
-	if err1 != nil || err2 != nil {
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
-	if dto, err := getCachedWeather(c.Request.Context(), float32(lat), float32(long)); err == nil {
-		c.JSON(http.StatusOK, WeatherModel{dto.Current.Temperature2M, dto.CurrentUnits.Temperature2M, dto.Current.WindSpeed10M, dto.CurrentUnits.WindSpeed10M})
-	} else {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	}
 }
